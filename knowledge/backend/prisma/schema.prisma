@@ -1,0 +1,346 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  phone     String   @unique
+  passwordHash String
+  firstName String
+  lastName  String
+  userType  String   // 'customer', 'restaurant', 'delivery_agent'
+  profileImage String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  addresses Address[]
+  allergyProfile AllergyProfile?
+  cartItems CartItem[]
+  orders Order[]
+  deliveryOrders Order[] @relation("DeliveryAgent")
+  aiConversations AIConversation[]
+  reviews Review[]
+  restaurant Restaurant?
+
+  @@map("users")
+}
+
+model Address {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  street    String
+  city      String
+  postalCode String
+  latitude  Float?
+  longitude Float?
+  addressType String? // 'home', 'work', 'other'
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  orders Order[]
+
+  @@map("addresses")
+}
+
+model AllergyProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  allergies Json     @default("[]")
+  dietaryRestrictions Json @default("[]")
+  healthConditions Json @default("[]")
+  spicePreference String? // 'mild', 'medium', 'spicy'
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("allergy_profiles")
+}
+
+model Restaurant {
+  id        String   @id @default(cuid())
+  ownerId   String   @unique
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  description String?
+  logoUrl   String?
+  bannerUrl String?
+  cuisineTypes Json
+  rating    Float    @default(0)
+  ratingCount Int    @default(0)
+  address   String
+  latitude  Float?
+  longitude Float?
+  phone     String?
+  minimumOrder Float @default(0)
+  deliveryFee Float @default(0)
+  estimatedDeliveryTime Int? // in minutes
+  isOpen    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  menuItems MenuItem[]
+  ingredients Ingredient[]
+  orders Order[]
+  reviews Review[]
+
+  @@map("restaurants")
+}
+
+model Ingredient {
+  id        String   @id @default(cuid())
+  restaurantId String
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name      String
+  allergenType String? // 'peanuts', 'dairy', 'shellfish', etc
+  isVegetarian Boolean @default(false)
+  isVegan   Boolean  @default(false)
+  description String?
+  createdAt DateTime @default(now())
+
+  // Relations
+  menuItems MenuItemIngredient[]
+  orderExclusions OrderItemExclusion[]
+  cartExclusions CartItemExclusion[]
+
+  @@unique([restaurantId, name])
+  @@map("ingredients")
+}
+
+model MenuItem {
+  id        String   @id @default(cuid())
+  restaurantId String
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name      String
+  description String?
+  imageUrl  String?
+  price     Float
+  category  String
+  isVegetarian Boolean @default(false)
+  isVegan   Boolean  @default(false)
+  spiceLevel String? // 'mild', 'medium', 'spicy'
+  rating    Float    @default(0)
+  ratingCount Int    @default(0)
+  isAvailable Boolean @default(true)
+  preparationTime Int? // in minutes
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  ingredients MenuItemIngredient[]
+  cartItems CartItem[]
+  orderItems OrderItem[]
+  aiRecommendations AIRecommendation[]
+
+  @@map("menu_items")
+}
+
+model MenuItemIngredient {
+  id        String   @id @default(cuid())
+  menuItemId String
+  menuItem  MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity  String?
+  createdAt DateTime @default(now())
+
+  @@unique([menuItemId, ingredientId])
+  @@map("menu_item_ingredients")
+}
+
+model Cart {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  restaurantId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  menuItemId String
+  menuItem  MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(1)
+  specialInstructions String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  exclusions CartItemExclusion[]
+
+  @@map("cart_items")
+}
+
+model CartItemExclusion {
+  id        String   @id @default(cuid())
+  cartItemId String
+  cartItem  CartItem @relation(fields: [cartItemId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([cartItemId, ingredientId])
+  @@map("cart_item_exclusions")
+}
+
+model Order {
+  id        String   @id @default(cuid())
+  orderNumber String @unique
+  customerId String
+  customer  User     @relation(fields: [customerId], references: [id])
+  restaurantId String
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id])
+  deliveryAddressId String
+  deliveryAddress Address @relation(fields: [deliveryAddressId], references: [id])
+  deliveryAgentId String?
+  deliveryAgent User?  @relation("DeliveryAgent", fields: [deliveryAgentId], references: [id])
+  
+  status    String   // 'pending', 'confirmed', 'preparing', 'ready', 'picked_up', 'in_delivery', 'delivered', 'cancelled'
+  subtotal  Float
+  tax       Float    @default(0)
+  deliveryFee Float  @default(0)
+  discount  Float    @default(0)
+  total     Float
+  paymentMethod String
+  paymentStatus String
+  specialInstructions String?
+  
+  estimatedDeliveryTime DateTime?
+  actualDeliveryTime DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  items OrderItem[]
+  payment Payment?
+  tracking Tracking?
+  reviews Review[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId String
+  menuItem  MenuItem @relation(fields: [menuItemId], references: [id])
+  quantity  Int
+  priceAtOrder Float
+  specialInstructions String?
+  createdAt DateTime @default(now())
+
+  // Relations
+  exclusions OrderItemExclusion[]
+
+  @@map("order_items")
+}
+
+model OrderItemExclusion {
+  id        String   @id @default(cuid())
+  orderItemId String
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([orderItemId, ingredientId])
+  @@map("order_item_exclusions")
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount    Float
+  paymentMethod String
+  status    String   // 'pending', 'completed', 'failed'
+  razorpayOrderId String?
+  razorpayPaymentId String?
+  razorpaySignature String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("payments")
+}
+
+model Tracking {
+  id        String   @id @default(cuid())
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  currentLatitude Float?
+  currentLongitude Float?
+  restaurantLatitude Float?
+  restaurantLongitude Float?
+  customerLatitude Float?
+  customerLongitude Float?
+  status    String   // 'restaurant_to_customer'
+  eta       DateTime?
+  distanceRemaining Float? // in km
+  updatedAt DateTime @updatedAt
+
+  @@map("tracking")
+}
+
+model AIConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationData Json // stores messages array
+  healthContext Json? // stores health info
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  recommendations AIRecommendation[]
+
+  @@map("ai_conversations")
+}
+
+model AIRecommendation {
+  id        String   @id @default(cuid())
+  conversationId String
+  conversation AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  menuItemId String
+  menuItem  MenuItem @relation(fields: [menuItemId], references: [id])
+  reason    String?
+  healthScore Float? // 0-10
+  createdAt DateTime @default(now())
+
+  @@map("ai_recommendations")
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  restaurantId String
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  rating    Int // 1-5
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@map("reviews")
+}
